@@ -66,9 +66,18 @@ python -m pytest tests/ -q
 - A plug-in runs as a **fresh process per invocation**, so editing it takes effect without
   restarting GIMP - but the *menu* is read at startup, so a new command needs a restart.
 
+## Installer
+
+`installer/Nexus.PLM.Gimp.Addin.iss` - Inno Setup, per-user, no elevation. Compile with ISCC;
+`tests/test_installer.py` holds it against the source (version, plug-in name, payload, uninstall
+scope). It installs into the plug-ins folder of the **newest** `%APPDATA%\GIMP\<version>`
+profile, chosen at install time. `build.py --install` remains the developer path.
+
+One Inno trap: a `[Code]` line may not *begin* with `#13#10` - the preprocessor reads a leading
+`#` as a directive and refuses to compile.
+
 ## Still to do
 
-- Only New from Template, and the commands it calls, have been driven end to end.
-- No installer: `build.py --install` is a developer script, and nothing user-facing may depend on
-  one.
+- Driven end to end: New from Template, Check Out, Save to PLM (with an unsaved edit), Check In,
+  Connection Status. The other commands are test-proven only.
 - Attributes do not survive **export** to PNG/JPEG. XMP would fix that; nobody has asked yet.
