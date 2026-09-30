@@ -54,10 +54,7 @@ def no_real_side_effects(monkeypatch, tmp_path):
     monkeypatch.setattr(state, "_PATH", str(tmp_path / "documents.json"))
     monkeypatch.setattr(host, "open_document", lambda path: None)
     monkeypatch.setattr(host, "open_url", lambda url: None)
-    monkeypatch.setattr(
-        host, "upload_copy",
-        lambda image, path, gimp=None, gio=None:
-        str(tmp_path / os.path.basename(path or "Untitled.xcf")))
+    monkeypatch.setattr(host, "upload_copy", lambda image, path, gimp=None, gio=None: path)
     monkeypatch.setattr(
         xcf, "write_values",
         lambda image, values, gimp=None: _REAL_WRITE_VALUES(image, values, gimp=Gimp))
@@ -111,7 +108,9 @@ class TestAnUnsavedImage:
 
 
 class TestWhatGetsUploaded:
-    def test_save_to_plm_sends_a_written_copy_not_the_users_file(self, monkeypatch, tmp_path):
+    """PLM is given the image's own path, holding the image as it stands - not a temp copy."""
+
+    def test_save_to_plm_sends_the_images_own_path(self, monkeypatch):
         monkeypatch.setattr(commands.identity, "item_of", lambda client, path: "item-1")
         client = FakeClient()
         sent = {}
@@ -119,14 +118,114 @@ class TestWhatGetsUploaded:
                             lambda item_id, path: sent.update(path=path) or {"success": True})
         ctx = context(client)
         commands.save_to_plm(ctx)
-        assert sent["path"] != ctx.path
-        assert os.path.basename(sent["path"]) == "GMP-000001-XCF.xcf"
+        assert sent["path"] == ctx.path
 
     def test_check_in_sends_one_too(self, monkeypatch):
         monkeypatch.setattr(commands.identity, "item_of", lambda client, path: "item-1")
         client = FakeClient()
         commands.check_in(context(client))
         assert "check_in" in client.calls
+
+
+class TestReviseInPlace:
+    """Revise stages the next revision under the SAME file name. The open image must become it.
+
+    Opening it in a second GIMP, with the closed revision still open beside it, is the bug Marc
+    saw on Inkscape: "opening a new file, not up-revving the existing one".
+    """
+
+    def _staged(self, tmp_path):
+        fakegimp.reset()
+        staged = str(tmp_path / "GMP-000001-XCF.xcf")
+        Gimp.saved[staged] = Image(path=staged)          # the file PLM staged, as GIMP will load it
+        return staged
+
+    def test_the_open_image_takes_the_new_revisions_record_and_nothing_opens(
+            self, monkeypatch, tmp_path):
+        monkeypatch.setattr(commands.identity, "item_of", lambda client, path: "item-1")
+        staged = self._staged(tmp_path)
+        opened = []
+        monkeypatch.setattr(host, "open_document", lambda p: opened.append(p))
+        client = FakeClient(revise={
+            "success": True, "item_id": "item-1", "revision": "B",
+            "file_path": staged.upper(),                 # same file, different case
+            "attribute_mappings": {"Revision": "B"},
+        })
+        ctx = context(client, path=staged)
+        commands.revise(ctx)
+        assert opened == []
+        assert xcf.read_values(ctx.image)["Revision"] == "B"
+
+    def test_the_staged_file_carries_the_record_too(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(commands.identity, "item_of", lambda client, path: "item-1")
+        staged = self._staged(tmp_path)
+        client = FakeClient(revise={
+            "success": True, "item_id": "item-1", "file_path": staged,
+            "attribute_mappings": {"Revision": "B"},
+        })
+        commands.revise(context(client, path=staged))
+        assert xcf.read_values(Gimp.saved[staged])["Revision"] == "B"
+
+    def test_a_different_file_still_opens_in_a_new_window(self, monkeypatch, tmp_path):
+        """Open from PLM brings a different item; that must never touch the user's image."""
+        fakegimp.reset()
+        other = str(tmp_path / "GMP-000002-XCF.xcf")
+        Gimp.saved[other] = Image(path=other)
+        opened = []
+        monkeypatch.setattr(host, "open_document", lambda p: opened.append(p))
+        client = FakeClient(open_document={"success": True, "item_id": "item-2", "file_path": other,
+                                           "attribute_mappings": {"Revision": "A"}})
+        ctx = context(client, path=str(tmp_path / "GMP-000001-XCF.xcf"))
+        commands.open_from_plm(ctx)
+        assert opened == [other]
+        assert xcf.read_values(ctx.image) == {}
+
+
+class TestSignOut:
+    def test_it_does_not_toast_on_success(self):
+        """The service's own [CommandToast] already says it; a second toast was measured live."""
+        client = FakeClient()
+        commands.sign_out(context(client))
+        assert client.said == []
+
+    def test_a_refusal_is_still_shown(self):
+        client = FakeClient(sign_out={"success": False, "error": "Not signed in."})
+        commands.sign_out(context(client))
+        assert any("Not signed in." in m for _s, m in client.said)
+
+
+class TestSaveAsNewOffers:
+    """What Save As New tells the service the image holds. Measured cause of blank items."""
+
+    def test_empty_slots_and_server_keys_stay_home(self, monkeypatch):
+        image = Image(path="C:/images/plain.xcf")
+        xcf.write_values(image, {"PartNumber": "", "Revision": "", "CreatedBy": "",
+                                 "CreationDate": "", "Description": "A plain image", "Author": ""})
+        client = FakeClient()
+        sent = {}
+        monkeypatch.setattr(client, "save_as_new",
+                            lambda path, hwnd, attributes=None, file_extensions=None:
+                            sent.update(attributes=attributes) or {"success": True})
+        commands.save_as_new(context(client, image=image, path="C:/images/plain.xcf"))
+        assert sent["attributes"] == {"Description": "A plain image"}
+
+
+class TestSaveAsExistingFillsTheRecord:
+    def test_the_items_values_are_fetched_and_written(self):
+        """The service's answer names the item and nothing else; the values come from a second ask."""
+        client = FakeClient(
+            save_as_existing={"success": True, "item_id": "item-3", "part_number": "GMP-000003-XCF"},
+            refresh_values={"success": True,
+                            "attribute_mappings": {"PartNumber": "GMP-000003-XCF", "Revision": "A"}})
+        ctx = context(client)
+        commands.save_as_existing(ctx)
+        assert client.calls.index("save_as_existing") < client.calls.index("refresh_values")
+        assert xcf.read_values(ctx.image) == {"PartNumber": "GMP-000003-XCF", "Revision": "A"}
+
+    def test_a_refusal_asks_for_nothing_more(self):
+        client = FakeClient(save_as_existing={"success": False, "error": "Locked by jdoe."})
+        commands.save_as_existing(context(client))
+        assert "refresh_values" not in client.calls
 
 
 class TestValuesReachTheImage:

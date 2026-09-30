@@ -19,7 +19,6 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 
 #: Beside every other Nexus add-in's log, under its own name so two hosts never share a file.
 LOG_PATH = os.path.join(
@@ -58,29 +57,47 @@ def document_path(image):
 
 
 def upload_copy(image, path, gimp=None, gio=None):
-    """Write the image as it stands to a temp ``.xcf`` and answer that path.
+    """Write the image as it stands, as XCF, to its own file, and answer that path for PLM.
 
-    XCF and not the original format, deliberately: the parasite carrying the PLM record is an XCF
-    feature, so a PNG would reach the vault with the picture and none of the attributes. The type
-    this add-in registers against is an XCF type for the same reason.
+    Two decisions here, both paid for.
 
-    Named after the document's own file so the vault names the dataset from it and
-    ``/plm/state?file_path=`` can read the part number back out of it.
+    **XCF and not the original format**: the parasite carrying the PLM record is an XCF feature,
+    so a PNG would reach the vault with the picture and none of the attributes. The type this
+    add-in registers against is an XCF type for the same reason. An image whose file is not
+    ``.xcf`` is written to a sibling ``.xcf`` of the same name, and that is what PLM takes.
+
+    **The image's own file, not a copy under %TEMP%.** The first version wrote a temp copy so no
+    PLM command would save over the user's file. But ``SaveRequest`` has one ``FilePath``, which the
+    service both reads and **records as the item's ``plm_file_path``** - so the temp copy became
+    the item's home, and Revise staged the next revision under %TEMP% and opened it in a second
+    window (measured on the Inkscape add-in, which shares this design). Marc: "it must get written
+    to the staging directory." For an item PLM handed over, the image's own file IS the staged file.
+
+    ``path`` is required: an image that has never been saved has no file for PLM to take, and the
+    commands refuse that case before reaching here.
     """
+    if not path:
+        raise ValueError("an image with no file cannot be uploaded")
+
     if gimp is None:
         from gi.repository import Gimp as gimp                      # noqa: N813
     if gio is None:
         from gi.repository import Gio as gio                        # noqa: N813
 
-    folder = os.path.join(tempfile.gettempdir(), "nexus-gimp")
+    folder, name = os.path.split(os.path.abspath(path))
+    stem, extension = os.path.splitext(name)
+    target = path if extension.lower() == ".xcf" else os.path.join(folder, stem + ".xcf")
     os.makedirs(folder, exist_ok=True)
 
-    name = os.path.basename(path) if path else "Untitled.xcf"
-    stem, _extension = os.path.splitext(name)
-    copy = os.path.join(folder, stem + ".xcf")
+    gimp.file_save(gimp.RunMode.NONINTERACTIVE, image, gio.File.new_for_path(target), None)
+    return target
 
-    gimp.file_save(gimp.RunMode.NONINTERACTIVE, image, gio.File.new_for_path(copy), None)
-    return copy
+
+def same_file(a, b):
+    """Whether two paths name the same file, as Windows sees it: case-insensitive, normalised."""
+    if not a or not b:
+        return False
+    return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
 
 
 def open_document(path):

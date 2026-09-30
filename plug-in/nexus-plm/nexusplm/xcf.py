@@ -53,6 +53,26 @@ def read_values(image):
     return values if isinstance(values, dict) else {}
 
 
+#: Keys PLM stamps itself. An image's copies of them are never offered back as the values of a
+#: new item. Save As New merges whatever a caller offers straight onto the new revision (only
+#: ``plm_`` keys are refused), so an image copied from another item would hand the new item its
+#: old part number, and a template's empty record wiped ``createdBy`` and ``creationDate`` to ""
+#: - measured on the Inkscape add-in, IND-00000007-SVG, 29 Sep 2026: every value came back blank.
+SYSTEM_KEYS = frozenset(k.lower() for k in (
+    "PartNumber", "Revision", "CreatedBy", "CreationDate", "ModifiedBy", "ModificationDate"))
+
+
+def offerable_values(image):
+    """The image's values a new item may take as defaults: filled in, and not PLM's own.
+
+    An empty entry in the record is a slot the template left for PLM to fill, not a value of "";
+    offering it as "" is how the blanks above were written. And the identity and stamp keys belong
+    to the server whatever the image says.
+    """
+    return {key: value for key, value in read_values(image).items()
+            if value and key.lower() not in SYSTEM_KEYS}
+
+
 def write_values(image, values, gimp=None):
     """Record ``values`` in the image's parasite and draw any the image is set up to show.
 
