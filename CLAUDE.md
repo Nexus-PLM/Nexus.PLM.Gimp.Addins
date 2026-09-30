@@ -87,6 +87,17 @@ One Inno trap: a `[Code]` line may not *begin* with `#13#10` - the preprocessor 
 
 ## Still to do
 
-- Driven end to end: New from Template, Check Out, Save to PLM (with an unsaved edit), Check In,
-  Connection Status. The other commands are test-proven only.
+- **All 21 commands driven end to end on the installed plug-in (29 Sep 2026)**, on the build that
+  carried the four fixes ported from the Inkscape sweep (PR #6). Service-side observations are in
+  Nexus.PLM.Inkscape.Addins PR #8.
 - Attributes do not survive **export** to PNG/JPEG. XMP would fix that; nobody has asked yet.
+
+## Measured while driving
+
+- **GIMP is single-instance.** `gimp-3.2.exe <file>` hands the file to the running GIMP, which
+  opens it as another image in the same process - `host.open_document` does not get a second GIMP
+  on Windows, and does not need one. The plug-in acts on the image whose window the menu was used in.
+- `Gimp.file_save` to the image's own file (Save to PLM) leaves the image **clean** - the title
+  loses its `*`, as after a real Save.
+- Revise in place: the record is written into the open image; "wrote 7 value(s), 0 shown" is
+  normal for an image with no text layers named for a key.
