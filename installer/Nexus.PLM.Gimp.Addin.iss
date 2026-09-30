@@ -26,7 +26,7 @@
 
 ; Keep in step with plug-in\nexus-plm\nexusplm\commands.py VERSION. tests\test_installer.py
 ; fails when they drift.
-#define AppVersion "0.1.0"
+#define AppVersion "0.2.0"
 
 ; Must match the folder and file name in plug-in\. tests\test_installer.py holds this.
 #define PluginName "nexus-plm"
