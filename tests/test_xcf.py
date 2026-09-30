@@ -155,3 +155,38 @@ class TestHowAValueReads:
     def test_anything_else_is_left_exactly_as_it_came(self):
         for value in ["GMP-000002-XCF", "A", "2026", "not-a-date", "", "12.5"]:
             assert xcf.for_display(value) == value
+
+
+class TestWhatANewItemMayTakeFromTheImage:
+    """Save As New offers the image's values as the new item's defaults. Not all of them.
+
+    The service merges the offer straight onto the new revision, so an empty slot became "" and
+    wiped the creation stamps, and a copied image would carry its old part number across.
+    """
+
+    def _record(self):
+        image = Image()
+        xcf.write_values(image, {
+            "PartNumber": "GMP-000004-XCF", "Revision": "B", "CreatedBy": "admin",
+            "CreationDate": "2026-09-28T19:41:00Z", "ModifiedBy": "admin",
+            "ModificationDate": "2026-09-29T01:00:00Z",
+            "Description": "Edited from GIMP", "Author": "Claude", "Department": "", "Priority": None,
+        }, gimp=Gimp)
+        return image
+
+    def test_blank_slots_are_not_offered(self):
+        offered = xcf.offerable_values(self._record())
+        assert "Department" not in offered and "Priority" not in offered
+
+    def test_the_servers_own_keys_are_not_offered_whatever_the_image_says(self):
+        offered = xcf.offerable_values(self._record())
+        for key in ("PartNumber", "Revision", "CreatedBy", "CreationDate",
+                    "ModifiedBy", "ModificationDate"):
+            assert key not in offered, key
+
+    def test_the_users_own_filled_in_values_are(self):
+        assert xcf.offerable_values(self._record()) == {
+            "Description": "Edited from GIMP", "Author": "Claude"}
+
+    def test_an_image_that_was_never_in_plm_offers_nothing(self):
+        assert xcf.offerable_values(Image()) == {}
