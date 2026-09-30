@@ -103,8 +103,9 @@ def same_file(a, b):
 def open_document(path):
     """Show a file to the user in GIMP.
 
-    A plug-in could load the image into the running GIMP, but a new process is used for the same
-    reason Inkscape's add-in does it: opening an item from the vault must not disturb whatever the
+    GIMP is started on the file. Measured on 3.2: GIMP is single-instance, so the new process hands
+    the file to the running GIMP and exits, and the image opens there as another window - which is
+    the behaviour wanted anyway, since opening an item from the vault must not disturb whatever the
     user already had open.
 
     All three streams go to DEVNULL and the child is detached. GIMP, like Inkscape, reads a
