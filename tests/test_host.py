@@ -9,7 +9,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import pytest  # noqa: E402
 
-from fakegimp import Image  # noqa: E402
+import fakegimp  # noqa: E402
+from fakegimp import Gimp, Gio, Image  # noqa: E402
 from nexusplm import host  # noqa: E402
 
 
@@ -76,6 +77,53 @@ class TestFindingGimp:
     def test_nothing_found_answers_none(self, tmp_path, monkeypatch):
         assert self._found(tmp_path, monkeypatch,
                            ["gimp-debug-tool.exe", "python.exe"]) is None
+
+
+class TestUploadCopy:
+    """What PLM is given: the image as it stands, written as XCF to its OWN file.
+
+    Not a temp copy: the service records the path it is given as the item's plm_file_path, so a
+    temp path became the next revision's home. Marc: "it must get written to the staging directory".
+    """
+
+    def test_an_xcf_image_is_written_over_its_own_file_and_that_path_answered(self, tmp_path):
+        fakegimp.reset()
+        own = str(tmp_path / "GMP-000001-XCF.xcf")
+        image = Image(path=own)
+        sent = host.upload_copy(image, own, gimp=Gimp, gio=Gio)
+        assert sent == own
+        assert own in Gimp.saved
+
+    def test_a_png_is_written_to_a_sibling_xcf_of_the_same_name(self, tmp_path):
+        """A PNG cannot carry the parasite; the XCF beside it can, and keeps the name PLM reads."""
+        fakegimp.reset()
+        png = str(tmp_path / "photo.png")
+        sent = host.upload_copy(Image(path=png), png, gimp=Gimp, gio=Gio)
+        assert sent == str(tmp_path / "photo.xcf")
+        assert sent in Gimp.saved
+
+    def test_nothing_goes_under_temp(self, tmp_path):
+        fakegimp.reset()
+        own = str(tmp_path / "GMP-000001-XCF.xcf")
+        sent = host.upload_copy(Image(path=own), own, gimp=Gimp, gio=Gio)
+        assert "nexus-gimp" not in sent.lower()
+
+    def test_an_image_with_no_file_is_refused_not_guessed(self):
+        """A made-up name under %TEMP% is exactly the bug this replaced."""
+        with pytest.raises(ValueError):
+            host.upload_copy(Image(), None, gimp=Gimp, gio=Gio)
+
+
+class TestSameFile:
+    def test_case_and_slashes_do_not_matter_on_windows(self):
+        assert host.same_file(r"C:\Nexus\Staging\GMP-1.xcf", "c:/nexus/staging/gmp-1.xcf")
+
+    def test_different_files_differ(self):
+        assert not host.same_file(r"C:\Nexus\Staging\GMP-1.xcf", r"C:\Nexus\Staging\GMP-2.xcf")
+
+    def test_nothing_is_never_the_same_file(self):
+        assert not host.same_file(None, r"C:\x.xcf")
+        assert not host.same_file(r"C:\x.xcf", "")
 
 
 class TestLogging:

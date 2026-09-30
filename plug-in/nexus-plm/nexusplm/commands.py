@@ -60,9 +60,9 @@ def _require_item(context):
 
 
 def _to_upload(context):
-    """The file PLM should take: the drawing as it is on screen, not as the disk last saw it.
+    """The file PLM should take: the image as it is on screen, written to its own file.
 
-    See :func:`nexusplm.host.upload_copy` for why this is a copy and not ``context.path``.
+    See :func:`nexusplm.host.upload_copy` for why it is the image's own file and not a copy.
     """
     return host.upload_copy(context.image, context.path)
 
@@ -81,9 +81,10 @@ def _remember(context, answer):
 def _hand_over(context, answer):
     """Take the file PLM just staged: remember it, write its record, and show it.
 
-    The order matters. The record goes in while the image is still only a file - the staged file opens
-    in a NEW GIMP, so there is no live image to write it into afterwards. Without this step New from Template
-    hands over an image carrying nothing, for an item PLM has just numbered.
+    The order matters. The record goes in while the image is still only a file - a staged file
+    that is not the open image opens in a NEW GIMP, so there is no live image to write it into
+    afterwards. Without this step New from Template hands over an image carrying nothing, for an
+    item PLM has just numbered.
     """
     staged = answer.get("file_path")
     if not staged:
@@ -101,7 +102,18 @@ def _hand_over(context, answer):
             # because it could not fill them in is not.
             host.log("could not write values into %s: %r" % (staged, error))
 
-    host.open_document(staged)
+    if host.same_file(staged, context.path):
+        # PLM staged the file this image IS - which is what Revise does, since the next revision
+        # keeps the part number and so the file name. The staged file is this image's pixels
+        # plus the new revision's record, so writing that record into the open image makes the
+        # window the new revision, edits and all. Opening the file in a second GIMP beside the
+        # closed revision was the bug Marc saw on Inkscape: "opening a new file, not up-revving
+        # the existing one".
+        if mappings:
+            recorded, drawn = xcf.write_values(context.image, mappings)
+            host.log("the open image is now %s: wrote %d value(s), %d shown" % (staged, recorded, drawn))
+    else:
+        host.open_document(staged)
     return True
 
 
@@ -127,11 +139,14 @@ def sign_in(context):
 
 
 def sign_out(context):
-    """Sign out of PLM."""
+    """Sign out of PLM.
+
+    No toast of our own on success. ``/api/auth/logout`` carries the service's ``[CommandToast]``,
+    so the tray has already said "Logout - Signed out admin" by the time the answer arrives; a
+    second "Signed out." underneath it is what driving the Inkscape add-in showed.
+    """
     answer = context.client.sign_out()
-    if answer.get("success"):
-        host.say(context.client, "Signed out.")
-    else:
+    if not answer.get("success"):
         _refused(context, answer, "Sign Out")
 
 
@@ -183,7 +198,7 @@ def save_as_new(context):
 
     answer = context.client.save_as_new(
         _to_upload(context), context.hwnd,
-        attributes=xcf.read_values(context.image),
+        attributes=xcf.offerable_values(context.image),
         file_extensions=FILE_EXTENSIONS)
     if not answer.get("success"):
         return _refused(context, answer, "Save As New Item")
@@ -204,7 +219,15 @@ def save_as_existing(context):
     if not answer.get("success"):
         return _refused(context, answer, "Save As Existing Item")
     _remember(context, answer)
-    _apply(context, answer, quiet=True)
+
+    # The answer names the item the image now belongs to but carries none of its values - the
+    # service's Save As Existing answers no mappings, for any host. Ask for them, so the record
+    # and any text layers show whose image it has become.
+    item_id = answer.get("item_id")
+    if item_id:
+        values = context.client.refresh_values(item_id)
+        if values.get("success"):
+            _apply(context, values, quiet=True)
 
 
 # ── lifecycle ────────────────────────────────────────────────────────────────

@@ -40,9 +40,18 @@ python -m pytest tests/ -q
   while the image is open and vanishes on save, silently. A test pins this.
 - **The plug-in must be `plug-ins/<name>/<name>.py`** - folder and file share a name - and
   executable on non-Windows. GIMP skips a plug-in that breaks either rule and says nothing.
-- **Uploads send a temp `.xcf`**, via `host.upload_copy`, never the user's own file. Saving over
-  their file is a side effect nobody asked a PLM command to have, and a `.png` cannot carry a
-  parasite at all.
+- **Uploads write the image, as XCF, to its OWN file** via `host.upload_copy`, and send that path.
+  Not a temp copy: `SaveRequest` has one `FilePath` that the service both reads and records as the
+  item's `plm_file_path`, so a temp path became the next revision's home (Revise staged rev B under
+  `%TEMP%` and opened a second window - measured on the Inkscape add-in, same design). Marc: "it
+  must get written to the staging directory." A `.png` cannot carry a parasite, so a non-XCF image
+  is written to a sibling `.xcf` of the same name.
+- **Revise ups the revision in place.** When the staged file *is* the open image
+  (`host.same_file`), `_hand_over` writes the new revision's record into the open image instead of
+  launching a second GIMP. A different file - Open from PLM, Search - still opens in a new GIMP.
+- **Save As New offers only `xcf.offerable_values`**: filled-in values that are not PLM's own
+  (part number, revision, the four stamps). The service merges the offer onto the new revision
+  as-is, and a template's blanks wiped `createdBy`/`creationDate` to `""`.
 - **The menu is not under Filters.** Nexus PLM is document management, not an image filter; it
   gets a top-level menu like LibreOffice's and OpenOffice's.
 - **Standard library only** in `nexusplm/`, plus the `gi` bindings GIMP provides. We do not
