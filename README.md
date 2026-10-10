@@ -145,3 +145,14 @@ through `next`.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+
+## Server-side translators
+
+`translators/` is this repo's Translation-server deliverable: a script manifest plus one
+script-fu export script. `xcf_to_png`, `xcf_to_jpeg` and `xcf_to_pdf` flatten the image and
+save as the format the output extension implies, headlessly via `gimp-console` (set
+`GIMP_CMD` on the server; GIMP's first headless start builds its font cache, hence the long
+timeouts). Paths travel through `GIMP_INPUT`/`GIMP_OUTPUT` environment variables because a
+Windows path inside a script-fu string literal is mangled by backslash escaping. Deployed to
+`Nexus\Translators\gimp\`; keys reserved in `Nexus.PLM.Services/docs/translator-ownership.md`.
