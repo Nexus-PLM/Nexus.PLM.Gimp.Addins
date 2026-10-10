@@ -1,0 +1,54 @@
+{
+  // GIMP's example translators: one script-fu export script, three entries whose output
+  // extension picks the format (gimp-file-save dispatches on the file name). Paths travel
+  // through GIMP_INPUT/GIMP_OUTPUT env vars because a Windows path inside a script-fu string
+  // literal is mangled by backslash escaping; (getenv ...) returns it unparsed.
+  //
+  // GIMP_CMD must point at gimp-console-<ver>.exe on the Translation server - GIMP is NOT
+  // installed there today; the entries load and list, and the first job names the variable.
+  // --batch-interpreter is MANDATORY on GIMP 3.2: without it gimp-console prints the
+  // interpreter list and idles forever instead of exiting (measured; cost a 30-minute hang).
+  // Pinned to GIMP 3.x script-fu (recipe proven against gimp-console-3.2). GIMP's first
+  // headless start builds its font cache and can take minutes; timeouts allow for it.
+  "translators": [
+    {
+      "key": "xcf_to_png",
+      "label": "GIMP → PNG",
+      "description": "Flattens a GIMP .xcf image and exports it as PNG, headlessly via gimp-console.",
+      "inputMimeType": "image/x-xcf",
+      "outputMimeType": "image/png",
+      "outputFileExtension": ".png",
+      "inputFileExtension": ".xcf",
+      "command": "${ENV:GIMP_CMD}",
+      "args": ["-i", "--batch-interpreter", "plug-in-script-fu-eval", "-b", "(load (getenv \"GIMP_SCRIPT\"))"],
+      "env": { "GIMP_SCRIPT": "${dir}/xcf_export.scm", "GIMP_INPUT": "${input}", "GIMP_OUTPUT": "${output}" },
+      "timeoutSeconds": 600
+    },
+    {
+      "key": "xcf_to_jpeg",
+      "label": "GIMP → JPEG",
+      "description": "Flattens a GIMP .xcf image and exports it as JPEG, headlessly via gimp-console.",
+      "inputMimeType": "image/x-xcf",
+      "outputMimeType": "image/jpeg",
+      "outputFileExtension": ".jpg",
+      "inputFileExtension": ".xcf",
+      "command": "${ENV:GIMP_CMD}",
+      "args": ["-i", "--batch-interpreter", "plug-in-script-fu-eval", "-b", "(load (getenv \"GIMP_SCRIPT\"))"],
+      "env": { "GIMP_SCRIPT": "${dir}/xcf_export.scm", "GIMP_INPUT": "${input}", "GIMP_OUTPUT": "${output}" },
+      "timeoutSeconds": 600
+    },
+    {
+      "key": "xcf_to_pdf",
+      "label": "GIMP → PDF",
+      "description": "Flattens a GIMP .xcf image and exports it as a single-page PDF, headlessly via gimp-console.",
+      "inputMimeType": "image/x-xcf",
+      "outputMimeType": "application/pdf",
+      "outputFileExtension": ".pdf",
+      "inputFileExtension": ".xcf",
+      "command": "${ENV:GIMP_CMD}",
+      "args": ["-i", "--batch-interpreter", "plug-in-script-fu-eval", "-b", "(load (getenv \"GIMP_SCRIPT\"))"],
+      "env": { "GIMP_SCRIPT": "${dir}/xcf_export.scm", "GIMP_INPUT": "${input}", "GIMP_OUTPUT": "${output}" },
+      "timeoutSeconds": 600
+    }
+  ]
+}
